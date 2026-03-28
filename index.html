@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Magic Eye Workshop</title>
+<style>
+@font-face {
+  font-family: 'W95FA';
+  src: url('data:application/font-woff2;charset=utf-8;base64,') format('woff2');
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --win-bg: #c0c0c0;
+  --win-dark: #808080;
+  --win-darker: #404040;
+  --win-light: #dfdfdf;
+  --win-white: #ffffff;
+  --win-black: #000000;
+  --win-title: #000080;
+  --win-title-text: #ffffff;
+  --win-title-inactive: #808080;
+  --win-sunken-outer: #808080;
+  --win-sunken-inner: #404040;
+  --win-raised-outer: #dfdfdf;
+  --win-raised-inner: #ffffff;
+  --win-field: #ffffff;
+  --win-highlight: #000080;
+  --win-highlight-text: #ffffff;
+}
+
+body {
+  font-family: 'MS Sans Serif', 'Microsoft Sans Serif', 'Tahoma', 'Arial', sans-serif;
+  font-size: 11px;
+  background: var(--win-bg);
+  color: var(--win-black);
+  min-height: 100vh;
+  line-height: 1.3;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+}
+
+/* ---- Win95 3D border mixins ---- */
+.raised {
+  border: 2px solid;
+  border-color: var(--win-raised-outer) var(--win-darker) var(--win-darker) var(--win-raised-outer);
+  box-shadow: inset 1px 1px 0 var(--win-white), inset -1px -1px 0 var(--win-dark);
+}
+
+.sunken {
+  border: 2px solid;
+  border-color: var(--win-dark) var(--win-raised-outer) var(--win-raised-outer) var(--win-dark);
+  box-shadow: inset 1px 1px 0 var(--win-darker), inset -1px -1px 0 var(--win-white);
+}
+
+.etched {
+  border: 1px solid var(--win-dark);
+  box-shadow: 1px 1px 0 var(--win-white), inset 1px 1px 0 var(--win-white);
+}
+
+/* ---- Window frame ---- */
+.window {
+  background: var(--win-bg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Title bar */
+.title-bar {
+  background: linear-gradient(90deg, var(--win-title), #1084d0);
+  padding: 2px 3px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+  height: 20px;
+}
+
+.title-bar-icon {
+  width: 16px;
+  height: 16px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.title-bar-text {
+  color: var(--win-title-text);
+  font-weight: bold;
+  font-size: 11px;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* ---- Window body ---- */
+.window-body {
+  padding: 6px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Main layout ---- */
+.workspace {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.canvas-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Group box (fieldset) ---- */
+.group-box {
+  padding: 12px 8px 8px;
+  position: relative;
+  border: 1px solid var(--win-dark);
+  box-shadow: 1px 1px 0 var(--win-white), inset 1px 1px 0 var(--win-white);
+  margin-top: 4px;
+}
+
+.group-box-label {
+  position: absolute;
+  top: -7px;
+  left: 8px;
+  background: var(--win-bg);
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+/* ---- Upload zone ---- */
+.upload-zone {
+  border: 1px dashed var(--win-dark);
+  background: var(--win-field);
+  padding: 16px 8px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.upload-zone:hover, .upload-zone.drag-over {
+  background: #e8e8ff;
+}
+
+.upload-zone .label {
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.upload-zone .hint {
+  color: var(--win-dark);
+}
+
+.upload-zone input[type="file"] { display: none; }
+
+/* ---- Depth map preview ---- */
+.depth-preview {
+  position: relative;
+  background: var(--win-black);
+  border: 2px solid;
+  border-color: var(--win-dark) var(--win-raised-outer) var(--win-raised-outer) var(--win-dark);
+  box-shadow: inset 1px 1px 0 var(--win-darker), inset -1px -1px 0 var(--win-white);
+}
+
+.depth-preview canvas {
+  width: 100%;
+  display: block;
+}
+
+.depth-preview .remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 14px;
+  background: var(--win-bg);
+  border: 1px solid;
+  border-color: var(--win-raised-outer) var(--win-darker) var(--win-darker) var(--win-raised-outer);
+  box-shadow: inset 1px 1px 0 var(--win-white), inset -1px -1px 0 var(--win-dark);
+  cursor: default;
+  font-size: 9px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--win-black);
+}
+
+/* ---- Sample depth maps ---- */
+.samples {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sample-btn {
+  width: 48px;
+  height: 48px;
+  padding: 2px;
+  background: var(--win-bg);
+  border: 2px solid;
+  border-color: var(--win-raised-outer) var(--win-darker) var(--win-darker) var(--win-raised-outer);
+  box-shadow: inset 1px 1px 0 var(--win-white), inset -1px -1px 0 var(--win-dark);
+  cursor: default;
+  overflow: hidden;
+}
+
+.sample-btn:active {
+  border-color: var(--win-darker) var(--win-raised-outer) var(--win-raised-outer) var(--win-darker);
+  box-shadow: inset 1px 1px 0 var(--win-dark);
+  padding: 3px 1px 1px 3px;
+}
+
+.sample-btn canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ---- Form controls ---- */
+.control-group {
+  margin-bottom: 8px;
+}
+
+.control-group:last-child { margin-bottom: 0; }
+
+.control-group label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+
+.control-group label span {
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.control-group select,
+.control-group input[type="range"] {
+  width: 100%;
+}
+
+select {
+  background: var(--win-field);
+  color: var(--win-black);
+  border: 2px solid;
+  border-color: var(--win-dark) var(--win-raised-outer) var(--win-raised-outer) var(--win-dark);
+  box-shadow: inset 1px 1px 0 var(--win-darker), inset -1px -1px 0 var(--win-white);
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: default;
+  outline: none;
+}
+
+select:focus {
+  outline: 1px dotted var(--win-black);
+  outline-offset: -3px;
+}
+
+/* Win95-style range slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 21px;
+  background: transparent;
+  outline: none;
+  margin: 2px 0;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  background: var(--win-bg);
+  border: 1px solid;
+  border-color: var(--win-dark) var(--win-white) var(--win-white) var(--win-dark);
+  box-shadow: inset 1px 1px 0 var(--win-darker);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 21px;
+  margin-top: -10px;
+  background: var(--win-bg);
+  border: 2px solid;
+  border-color: var(--win-raised-outer) var(--win-darker) var(--win-darker) var(--win-raised-outer);
+  box-shadow: inset 1px 1px 0 var(--win-white), inset -1px -1px 0 var(--win-dark);
+  cursor: default;
+}
+
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--win-black);
+  cursor: default;
+}
+
+/* ---- Buttons ---- */
+.actions { display: flex; gap: 4px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 12px;
+  min-height: 23px;
+  background: var(--win-bg);
+  border: 2px solid;
+  border-color: var(--win-raised-outer) var(--win-darker) var(--win-darker) var(--win-raised-outer);
+  box-shadow: inset 1px 1px 0 var(--win-white), inset -1px -1px 0 var(--win-dark);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: default;
+  outline: none;
+  white-space: nowrap;
+}
+
+.btn:active:not(:disabled) {
+  border-color: var(--win-darker) var(--win-raised-outer) var(--win-raised-outer) var(--win-darker);
+  box-shadow: inset 1px 1px 0 var(--win-dark);
+  padding: 5px 11px 3px 13px;
+}
+
+.btn:focus-visible {
+  outline: 1px dotted var(--win-black);
+  outline-offset: -4px;
+}
+
+.btn-primary {
+  font-weight: bold;
+  border: 3px solid;
+  border-color: var(--win-black);
+  box-shadow: inset 1px 1px 0 var(--win-raised-outer), inset -1px -1px 0 var(--win-dark),
+              inset 2px 2px 0 var(--win-white), inset -2px -2px 0 var(--win-darker);
+}
+
+.btn-primary:active:not(:disabled) {
+  box-shadow: inset 1px 1px 0 var(--win-dark), inset 2px 2px 0 var(--win-darker);
+}
+
+.btn:disabled {
+  color: var(--win-dark);
+  text-shadow: 1px 1px 0 var(--win-white);
+}
+
+/* ---- Output area ---- */
+.output-wrapper {
+  background: var(--win-field);
+  border: 2px solid;
+  border-color: var(--win-dark) var(--win-raised-outer) var(--win-raised-outer) var(--win-dark);
+  box-shadow: inset 1px 1px 0 var(--win-darker), inset -1px -1px 0 var(--win-white);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  overflow: auto;
+  position: relative;
+}
+
+.output-wrapper canvas {
+  max-width: 100%;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.output-label {
+  font-size: 11px;
+  color: var(--win-dark);
+  padding: 2px 4px;
+  background: var(--win-bg);
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+}
+
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--win-dark);
+  text-align: center;
+  gap: 6px;
+  padding: 20px;
+}
+
+.placeholder .icon-placeholder {
+  width: 48px;
+  height: 48px;
+  border: 2px solid;
+  border-color: var(--win-dark) var(--win-raised-outer) var(--win-raised-outer) var(--win-dark);
+  background: var(--win-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--win-dark);
+}
+
+.tip {
+  text-align: center;
+  padding: 4px;
+  color: var(--win-darker);
+  margin-top: 4px;
+}
+
+.tip b { color: var(--win-black); }
+
+/* ---- Progress bar (Win95 style segmented) ---- */
+.progress-bar {
+  width: 100%;
+  height: 16px;
+  background: var(--win-bg);
+  border: 2px solid;
+  border-color: var(--win-dark) var(--win-raised-outer) var(--win-raised-outer) var(--win-dark);
+  box-shadow: inset 1px 1px 0 var(--win-darker);
+  display: none;
+  padding: 2px;
+}
+
+.progress-bar.active { display: block; }
+
+.progress-bar .fill {
+  height: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--win-title) 0px,
+    var(--win-title) 8px,
+    transparent 8px,
+    transparent 10px
+  );
+  width: 0%;
+  transition: width 0.1s;
+}
+
+/* ---- Status bar ---- */
+.status-bar {
+  display: flex;
+  margin-top: 2px;
+  gap: 2px;
+}
+
+.status-bar-field {
+  flex: 1;
+  border: 2px solid;
+  border-color: var(--win-dark) var(--win-raised-outer) var(--win-raised-outer) var(--win-dark);
+  box-shadow: inset 1px 1px 0 var(--win-darker);
+  padding: 1px 4px;
+  font-size: 11px;
+  min-height: 18px;
+}
+
+.status-bar-field.right {
+  flex: 0 0 120px;
+  text-align: right;
+}
+
+/* ---- Toolbar ---- */
+.toolbar {
+  display: flex;
+  gap: 2px;
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--win-dark);
+  box-shadow: 0 1px 0 var(--win-white);
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.toolbar-sep {
+  width: 2px;
+  height: 20px;
+  border-left: 1px solid var(--win-dark);
+  border-right: 1px solid var(--win-white);
+  margin: 0 2px;
+}
+
+.toolbar-label {
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+.toolbar .btn {
+  min-height: 22px;
+  min-width: 22px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.toolbar .btn:active:not(:disabled) {
+  padding: 3px 5px 1px 7px;
+}
+
+/* Custom pattern upload inline */
+#customPatternUpload .upload-zone {
+  padding: 6px;
+  font-size: 11px;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 700px) {
+  .workspace { flex-direction: column; }
+  .sidebar { width: 100%; }
+}
+
+/* ---- App icon pixel art (embedded as SVG) ---- */
+.app-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  background:
+    linear-gradient(135deg, #ff0000 25%, #00ff00 25%, #00ff00 50%, #0000ff 50%, #0000ff 75%, #ffff00 75%);
+  image-rendering: pixelated;
+  border: 1px solid #000080;
+}
+</style>
+</head>
+<body>
+
+<div class="window">
+  <!-- Title bar -->
+  <div class="title-bar">
+    <div class="app-icon"></div>
+    <div class="title-bar-text">Magic Eye Workshop</div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="btn" id="generateBtn" disabled>&#9654; Generate!</button>
+    <button class="btn" id="downloadBtn" disabled>&#128190; Save As...</button>
+    <div class="toolbar-sep"></div>
+    <span class="toolbar-label">Pattern:</span>
+    <select id="patternType" style="width: auto;">
+      <option value="randomBW">Random B&amp;W Dots</option>
+      <option value="randomColor">Random Colored Dots</option>
+      <option value="custom">Custom Pattern</option>
+    </select>
+    <div id="customPatternUpload" style="display:none;">
+      <div id="patternUploadZone" class="upload-zone" style="padding:2px 8px; border:1px solid var(--win-dark); display:inline-block; cursor: pointer;">
+        <span class="hint">Browse...</span>
+        <input type="file" id="patternFileInput" accept="image/*">
+      </div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="window-body">
+    <div class="workspace">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <!-- Depth Map -->
+        <div class="group-box">
+          <span class="group-box-label">Depth Map</span>
+          <div id="uploadZone" class="upload-zone">
+            <div class="label">Drop image here</div>
+            <div class="label">or click to browse</div>
+            <div class="hint">(BMP, PNG, JPG)</div>
+            <input type="file" id="fileInput" accept="image/*">
+          </div>
+          <div id="depthPreview" class="depth-preview" style="display:none; margin-top:6px;">
+            <canvas id="depthCanvas"></canvas>
+            <button class="remove-btn" id="removeBtn" title="Remove">&#10005;</button>
+          </div>
+        </div>
+
+        <!-- Samples -->
+        <div class="group-box">
+          <span class="group-box-label">Samples</span>
+          <div class="samples" id="samples"></div>
+        </div>
+
+        <!-- Settings -->
+        <div class="group-box">
+          <span class="group-box-label">Options</span>
+
+          <div class="control-group">
+            <label>Depth Intensity: <span id="muVal">33%</span></label>
+            <input type="range" id="muSlider" min="5" max="50" value="33">
+          </div>
+
+          <div class="control-group">
+            <label>Strip Width: <span id="stripVal">140px</span></label>
+            <input type="range" id="stripSlider" min="60" max="250" value="140">
+          </div>
+
+          <div class="control-group">
+            <label>Resolution: <span id="resVal">100%</span></label>
+            <input type="range" id="resSlider" min="25" max="200" value="100">
+          </div>
+
+          <div class="control-group">
+            <div class="checkbox-group">
+              <input type="checkbox" id="invertDepth">
+              <label for="invertDepth">Invert depth map</label>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="checkbox-group">
+              <input type="checkbox" id="guideDots" checked>
+              <label for="guideDots">Show guide dots</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Canvas area -->
+      <div class="canvas-area">
+        <div class="output-wrapper" id="outputWrapper">
+          <div class="placeholder" id="outputPlaceholder">
+            <div class="icon-placeholder">?</div>
+            <div>Load a depth map and click<br><b>Generate!</b> to create your stereogram.</div>
+          </div>
+          <canvas id="stereogram" style="display:none;"></canvas>
+          <div class="output-label" id="outputLabel" style="display:none;"></div>
+        </div>
+        <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
+        <div class="tip" id="viewingTip" style="display:none;">
+          <b>How to view:</b> Hold the image close to your face, then slowly pull back while relaxing your focus. The hidden 3D image will appear!
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div style="padding: 0 6px 6px;">
+    <div class="status-bar">
+      <div class="status-bar-field" id="statusText">Ready</div>
+      <div class="status-bar-field right" id="statusDim"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- State ----
+const state = {
+  depthMapImage: null,
+  patternImage: null,
+  generating: false,
+};
+
+// ---- DOM refs ----
+const $ = (s) => document.getElementById(s);
+const uploadZone = $('uploadZone');
+const fileInput = $('fileInput');
+const depthPreview = $('depthPreview');
+const depthCanvas = $('depthCanvas');
+const removeBtn = $('removeBtn');
+const patternType = $('patternType');
+const customPatternUpload = $('customPatternUpload');
+const patternUploadZone = $('patternUploadZone');
+const patternFileInput = $('patternFileInput');
+const muSlider = $('muSlider');
+const muVal = $('muVal');
+const stripSlider = $('stripSlider');
+const stripVal = $('stripVal');
+const resSlider = $('resSlider');
+const resVal = $('resVal');
+const invertDepth = $('invertDepth');
+const guideDots = $('guideDots');
+const generateBtn = $('generateBtn');
+const downloadBtn = $('downloadBtn');
+const stereogramCanvas = $('stereogram');
+const outputPlaceholder = $('outputPlaceholder');
+const progressBar = $('progressBar');
+const progressFill = $('progressFill');
+const outputLabel = $('outputLabel');
+const viewingTip = $('viewingTip');
+const samplesContainer = $('samples');
+const statusText = $('statusText');
+const statusDim = $('statusDim');
+
+// ---- Upload handling ----
+function setupDropZone(zone, input, onFile) {
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => {
+    if (input.files[0]) onFile(input.files[0]);
+    input.value = '';
+  });
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) onFile(file);
+  });
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+async function handleDepthMapUpload(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    state.depthMapImage = img;
+    const maxW = 260;
+    const scale = Math.min(maxW / img.naturalWidth, 1);
+    depthCanvas.width = Math.round(img.naturalWidth * scale);
+    depthCanvas.height = Math.round(img.naturalHeight * scale);
+    const ctx = depthCanvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, depthCanvas.width, depthCanvas.height);
+    depthPreview.style.display = 'block';
+    uploadZone.style.display = 'none';
+    generateBtn.disabled = false;
+    statusText.textContent = 'Depth map loaded: ' + img.naturalWidth + 'x' + img.naturalHeight;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function removeDepthMap() {
+  state.depthMapImage = null;
+  depthPreview.style.display = 'none';
+  uploadZone.style.display = '';
+  generateBtn.disabled = true;
+  statusText.textContent = 'Ready';
+  statusDim.textContent = '';
+}
+
+async function handlePatternUpload(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    state.patternImage = await loadImage(url);
+    statusText.textContent = 'Custom pattern loaded.';
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+setupDropZone(uploadZone, fileInput, handleDepthMapUpload);
+setupDropZone(patternUploadZone, patternFileInput, handlePatternUpload);
+removeBtn.addEventListener('click', removeDepthMap);
+
+// ---- Controls ----
+patternType.addEventListener('change', () => {
+  customPatternUpload.style.display = patternType.value === 'custom' ? '' : 'none';
+});
+
+muSlider.addEventListener('input', () => { muVal.textContent = muSlider.value + '%'; });
+stripSlider.addEventListener('input', () => { stripVal.textContent = stripSlider.value + 'px'; });
+resSlider.addEventListener('input', () => { resVal.textContent = resSlider.value + '%'; });
+
+// ---- Sample depth maps ----
+function generateSampleDepthMaps() {
+  const size = 256;
+  const samples = [
+    { name: 'Sphere', fn: (x, y) => {
+      const dx = x - 0.5, dy = y - 0.5;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      return d < 0.4 ? Math.sqrt(0.16 - d * d) / 0.4 : 0;
+    }},
+    { name: 'Pyramid', fn: (x, y) => {
+      const d = Math.max(Math.abs(x - 0.5), Math.abs(y - 0.5));
+      return d < 0.4 ? 1 - d / 0.4 : 0;
+    }},
+    { name: 'Rings', fn: (x, y) => {
+      const dx = x - 0.5, dy = y - 0.5;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      return (Math.sin(d * 30) + 1) * 0.3 * Math.max(0, 1 - d * 2.2);
+    }},
+    { name: 'Steps', fn: (x, y) => {
+      const dx = Math.abs(x - 0.5), dy = Math.abs(y - 0.5);
+      if (dx < 0.15 && dy < 0.15) return 1.0;
+      if (dx < 0.3 && dy < 0.3) return 0.5;
+      return 0;
+    }},
+  ];
+
+  samples.forEach(({ name, fn }) => {
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const ctx = c.getContext('2d');
+    const imgData = ctx.createImageData(size, size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const v = Math.round(fn(x / size, y / size) * 255);
+        const i = (y * size + x) * 4;
+        imgData.data[i] = imgData.data[i + 1] = imgData.data[i + 2] = v;
+        imgData.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    const btn = document.createElement('button');
+    btn.className = 'sample-btn';
+    btn.title = name;
+    const preview = document.createElement('canvas');
+    preview.width = size;
+    preview.height = size;
+    preview.getContext('2d').drawImage(c, 0, 0);
+    btn.appendChild(preview);
+    btn.addEventListener('click', () => {
+      const img = new Image();
+      img.onload = () => {
+        state.depthMapImage = img;
+        const maxW = 260;
+        const scale = Math.min(maxW / size, 1);
+        depthCanvas.width = Math.round(size * scale);
+        depthCanvas.height = Math.round(size * scale);
+        depthCanvas.getContext('2d').drawImage(img, 0, 0, depthCanvas.width, depthCanvas.height);
+        depthPreview.style.display = 'block';
+        uploadZone.style.display = 'none';
+        generateBtn.disabled = false;
+        statusText.textContent = 'Sample loaded: ' + name + ' (256x256)';
+      };
+      img.src = c.toDataURL();
+    });
+    samplesContainer.appendChild(btn);
+  });
+}
+generateSampleDepthMaps();
+
+// ---- Stereogram generation ----
+
+function getDepthMap(img, width, height, invert) {
+  const c = document.createElement('canvas');
+  c.width = width;
+  c.height = height;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, width, height);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const map = new Float32Array(width * height);
+  for (let i = 0; i < width * height; i++) {
+    let gray = (0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]) / 255;
+    if (invert) gray = 1 - gray;
+    map[i] = gray;
+  }
+  return map;
+}
+
+function createPatternFn(type, stripWidth, height, patternImg) {
+  const buf = new Uint8ClampedArray(stripWidth * height * 4);
+
+  if (type === 'custom' && patternImg) {
+    const c = document.createElement('canvas');
+    c.width = stripWidth;
+    const patternH = Math.round(patternImg.naturalHeight * (stripWidth / patternImg.naturalWidth));
+    c.height = patternH;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(patternImg, 0, 0, stripWidth, patternH);
+    const pData = ctx.getImageData(0, 0, stripWidth, patternH).data;
+
+    return (x, y) => {
+      const px = ((x % stripWidth) + stripWidth) % stripWidth;
+      const py = ((y % patternH) + patternH) % patternH;
+      const idx = (py * stripWidth + px) * 4;
+      return [pData[idx], pData[idx + 1], pData[idx + 2], 255];
+    };
+  }
+
+  if (type === 'randomColor') {
+    for (let i = 0; i < stripWidth * height; i++) {
+      const h = Math.random() * 360;
+      const s = 0.7 + Math.random() * 0.3;
+      const l = 0.35 + Math.random() * 0.3;
+      const [r, g, b] = hslToRgb(h, s, l);
+      buf[i * 4] = r;
+      buf[i * 4 + 1] = g;
+      buf[i * 4 + 2] = b;
+      buf[i * 4 + 3] = 255;
+    }
+  } else {
+    for (let i = 0; i < stripWidth * height; i++) {
+      const v = Math.random() < 0.5 ? 0 : 255;
+      buf[i * 4] = buf[i * 4 + 1] = buf[i * 4 + 2] = v;
+      buf[i * 4 + 3] = 255;
+    }
+  }
+
+  return (x, y) => {
+    const px = ((x % stripWidth) + stripWidth) % stripWidth;
+    const idx = (y * stripWidth + px) * 4;
+    return [buf[idx], buf[idx + 1], buf[idx + 2], 255];
+  };
+}
+
+function hslToRgb(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+async function generateStereogram() {
+  if (!state.depthMapImage || state.generating) return;
+  state.generating = true;
+  generateBtn.disabled = true;
+  downloadBtn.disabled = true;
+  statusText.textContent = 'Generating stereogram...';
+
+  const mu = parseInt(muSlider.value) / 100;
+  const stripWidth = parseInt(stripSlider.value);
+  const resFactor = parseInt(resSlider.value) / 100;
+  const invert = invertDepth.checked;
+  const showGuides = guideDots.checked;
+  const pType = patternType.value;
+
+  const srcImg = state.depthMapImage;
+  const width = Math.round(srcImg.naturalWidth * resFactor);
+  const height = Math.round(srcImg.naturalHeight * resFactor);
+
+  outputPlaceholder.style.display = 'none';
+  stereogramCanvas.style.display = 'block';
+  progressBar.classList.add('active');
+  progressFill.style.width = '0%';
+
+  stereogramCanvas.width = width;
+  stereogramCanvas.height = height;
+  const ctx = stereogramCanvas.getContext('2d');
+
+  const depthMap = getDepthMap(srcImg, width, height, invert);
+  const patternFn = createPatternFn(pType, stripWidth, height, state.patternImage);
+
+  const output = ctx.createImageData(width, height);
+  const pixels = output.data;
+
+  const CHUNK = 40;
+
+  const processChunk = (startY) => {
+    return new Promise((resolve) => {
+      const endY = Math.min(startY + CHUNK, height);
+
+      for (let y = startY; y < endY; y++) {
+        const same = new Int32Array(width);
+        for (let x = 0; x < width; x++) same[x] = x;
+
+        for (let x = 0; x < width; x++) {
+          const z = depthMap[y * width + x];
+          const sep = Math.round((1 - mu * z) * stripWidth / (2 - mu * z));
+
+          const left = x - Math.floor(sep / 2);
+          const right = left + sep;
+
+          if (left >= 0 && right < width) {
+            let visible = true;
+            let t = 1;
+            const limit = Math.floor(sep / 2);
+            while (t <= limit) {
+              const zt = z + 2 * (2 - mu * z) * t / (mu * stripWidth);
+              if (zt >= 1) break;
+              if (x - t >= 0 && depthMap[y * width + x - t] >= zt) { visible = false; break; }
+              if (x + t < width && depthMap[y * width + x + t] >= zt) { visible = false; break; }
+              t++;
+            }
+
+            if (visible) {
+              let k = left;
+              while (same[k] !== k && same[k] !== right) {
+                const next = same[k];
+                if (next < right) {
+                  same[k] = right;
+                  k = next;
+                } else {
+                  same[k] = right;
+                  k = next;
+                  break;
+                }
+              }
+              if (same[k] === k) same[k] = right;
+            }
+          }
+        }
+
+        for (let x = width - 1; x >= 0; x--) {
+          const offset = (y * width + x) * 4;
+          if (same[x] === x) {
+            const [r, g, b, a] = patternFn(x, y);
+            pixels[offset] = r;
+            pixels[offset + 1] = g;
+            pixels[offset + 2] = b;
+            pixels[offset + 3] = a;
+          } else {
+            const src = (y * width + same[x]) * 4;
+            pixels[offset] = pixels[src];
+            pixels[offset + 1] = pixels[src + 1];
+            pixels[offset + 2] = pixels[src + 2];
+            pixels[offset + 3] = pixels[src + 3];
+          }
+        }
+      }
+
+      const pct = Math.round((endY / height) * 100);
+      progressFill.style.width = pct + '%';
+      statusText.textContent = 'Generating stereogram... ' + pct + '%';
+      requestAnimationFrame(() => resolve(endY));
+    });
+  };
+
+  let y = 0;
+  while (y < height) {
+    y = await processChunk(y);
+  }
+
+  ctx.putImageData(output, 0, 0);
+
+  if (showGuides) {
+    const centerX = Math.floor(width / 2);
+    const dotY = 12;
+    const dotR = 5;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(centerX - Math.floor(stripWidth / 2), dotY, dotR + 1, 0, Math.PI * 2);
+    ctx.arc(centerX + Math.floor(stripWidth / 2), dotY, dotR + 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(centerX - Math.floor(stripWidth / 2), dotY, dotR, 0, Math.PI * 2);
+    ctx.arc(centerX + Math.floor(stripWidth / 2), dotY, dotR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  progressBar.classList.remove('active');
+  outputLabel.textContent = width + ' x ' + height;
+  outputLabel.style.display = '';
+  viewingTip.style.display = '';
+  statusText.textContent = 'Stereogram generated successfully.';
+  statusDim.textContent = width + ' x ' + height;
+  downloadBtn.disabled = false;
+  state.generating = false;
+  generateBtn.disabled = false;
+}
+
+generateBtn.addEventListener('click', generateStereogram);
+
+downloadBtn.addEventListener('click', () => {
+  const link = document.createElement('a');
+  link.download = 'stereogram.png';
+  link.href = stereogramCanvas.toDataURL('image/png');
+  link.click();
+  statusText.textContent = 'File saved as stereogram.png';
+});
+</script>
+</body>
+</html>

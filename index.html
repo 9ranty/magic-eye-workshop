@@ -558,8 +558,13 @@ input[type="range"]::-webkit-slider-thumb {
     <span class="toolbar-label">Pattern:</span>
     <select id="patternType" style="width: auto;">
       <option value="randomBW">Random B&amp;W Dots</option>
-      <option value="randomColor">Random Colored Dots</option>
-      <option value="custom">Custom Pattern</option>
+      <option value="randomColor">Random Color Dots</option>
+      <option value="smoothNoise">Smooth Noise</option>
+      <option value="colorNoise">Colorful Noise</option>
+      <option value="bubbles">Bubbles</option>
+      <option value="weave">Weave</option>
+      <option value="stars">Starfield</option>
+      <option value="custom">Custom Image...</option>
     </select>
     <div id="customPatternUpload" style="display:none;">
       <div id="patternUploadZone" class="upload-zone" style="padding:2px 8px; border:1px solid var(--win-dark); display:inline-block; cursor: pointer;">
@@ -863,9 +868,216 @@ function getDepthMap(img, width, height, invert) {
   return map;
 }
 
-function createPatternFn(type, stripWidth, height, patternImg) {
-  const buf = new Uint8ClampedArray(stripWidth * height * 4);
+// ---- Pattern helpers ----
 
+function hslToRgb(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+// Simple hash for deterministic noise
+function hash2d(x, y) {
+  let h = (x * 374761393 + y * 668265263 + 1013904223) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h & 0x7fffffff) / 0x7fffffff;
+}
+
+// Smooth value noise (interpolated)
+function valueNoise(x, y, scale) {
+  const sx = x / scale, sy = y / scale;
+  const ix = Math.floor(sx), iy = Math.floor(sy);
+  const fx = sx - ix, fy = sy - iy;
+  // Smoothstep
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  const a = hash2d(ix, iy);
+  const b = hash2d(ix + 1, iy);
+  const c = hash2d(ix, iy + 1);
+  const d = hash2d(ix + 1, iy + 1);
+  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+}
+
+// Fractal Brownian Motion (layered noise)
+function fbm(x, y, octaves, scale) {
+  let val = 0, amp = 0.5, s = scale;
+  for (let i = 0; i < octaves; i++) {
+    val += amp * valueNoise(x, y, s);
+    s *= 0.5;
+    amp *= 0.5;
+  }
+  return val;
+}
+
+function renderPatternToBuffer(type, stripWidth, height) {
+  const buf = new Uint8ClampedArray(stripWidth * height * 4);
+  const set = (x, y, r, g, b) => {
+    const i = (y * stripWidth + x) * 4;
+    buf[i] = r; buf[i+1] = g; buf[i+2] = b; buf[i+3] = 255;
+  };
+
+  if (type === 'randomBW') {
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < stripWidth; x++) {
+        const v = Math.random() < 0.5 ? 0 : 255;
+        set(x, y, v, v, v);
+      }
+  }
+
+  else if (type === 'randomColor') {
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < stripWidth; x++) {
+        const [r, g, b] = hslToRgb(Math.random() * 360, 0.7 + Math.random() * 0.3, 0.35 + Math.random() * 0.3);
+        set(x, y, r, g, b);
+      }
+  }
+
+  else if (type === 'smoothNoise') {
+    // Tileable smooth grayscale noise
+    const seed = Math.floor(Math.random() * 10000);
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < stripWidth; x++) {
+        // Make it tile horizontally by blending wrapped samples
+        const n1 = fbm(x + seed, y + seed, 4, 24);
+        const n2 = fbm(x + stripWidth + seed, y + seed, 4, 24);
+        const blend = x / stripWidth;
+        const n = n1 * (1 - blend) + n2 * blend;
+        const v = Math.round(n * 255);
+        set(x, y, v, v, v);
+      }
+  }
+
+  else if (type === 'colorNoise') {
+    // Tileable colorful noise — different hue layers
+    const seed = Math.floor(Math.random() * 10000);
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < stripWidth; x++) {
+        const blend = x / stripWidth;
+        const n1 = fbm(x + seed, y + seed, 3, 30);
+        const n2 = fbm(x + stripWidth + seed, y + seed, 3, 30);
+        const n = n1 * (1 - blend) + n2 * blend;
+        const h1 = fbm(x + seed + 500, y + seed + 500, 2, 40);
+        const h2 = fbm(x + stripWidth + seed + 500, y + seed + 500, 2, 40);
+        const h = h1 * (1 - blend) + h2 * blend;
+        const [r, g, b] = hslToRgb(h * 360, 0.75, 0.3 + n * 0.4);
+        set(x, y, r, g, b);
+      }
+  }
+
+  else if (type === 'bubbles') {
+    // Random circles of varying sizes and colors
+    // First fill with a dark base
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < stripWidth; x++)
+        set(x, y, 20, 15, 40);
+
+    const numBubbles = Math.round(stripWidth * height / 120);
+    const bubbles = [];
+    for (let i = 0; i < numBubbles; i++) {
+      bubbles.push({
+        cx: Math.random() * stripWidth,
+        cy: Math.random() * height,
+        r: 3 + Math.random() * 10,
+        h: Math.random() * 360,
+        s: 0.6 + Math.random() * 0.4,
+        l: 0.4 + Math.random() * 0.3,
+      });
+    }
+
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < stripWidth; x++) {
+        for (const bub of bubbles) {
+          // Check distance, wrapping horizontally for tileability
+          let dx = Math.abs(x - bub.cx);
+          if (dx > stripWidth / 2) dx = stripWidth - dx;
+          const dy = y - bub.cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < bub.r) {
+            const t = dist / bub.r;
+            const highlight = Math.max(0, 1 - t * 1.8);
+            const [cr, cg, cb] = hslToRgb(bub.h, bub.s, bub.l + highlight * 0.35);
+            set(x, y, cr, cg, cb);
+          }
+        }
+      }
+  }
+
+  else if (type === 'weave') {
+    // Crosshatch / fabric weave pattern
+    const size = 8;
+    const colors = [
+      [() => hslToRgb(210 + hash2d(0, 0) * 30, 0.6, 0.35), () => hslToRgb(210 + hash2d(1, 0) * 30, 0.6, 0.55)],
+      [() => hslToRgb(30 + hash2d(0, 1) * 20, 0.5, 0.4), () => hslToRgb(30 + hash2d(1, 1) * 20, 0.5, 0.6)]
+    ];
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < stripWidth; x++) {
+        const bx = Math.floor(x / size) % 2;
+        const by = Math.floor(y / size) % 2;
+        const over = (bx + by) % 2;
+        const lx = (x % size) / size;
+        const ly = (y % size) / size;
+        // Shade edges for 3D woven look
+        const edgeFade = Math.min(lx, 1 - lx, ly, 1 - ly) * 4;
+        const shade = 0.7 + 0.3 * Math.min(1, edgeFade);
+        const baseH = over === 0 ? 210 + hash2d(Math.floor(x / size), 0) * 20 : 30 + hash2d(0, Math.floor(y / size)) * 20;
+        const baseS = over === 0 ? 0.6 : 0.5;
+        const baseL = (over === 0 ? 0.42 : 0.48) * shade;
+        // Add noise
+        const n = hash2d(x * 7, y * 13) * 0.06 - 0.03;
+        const [r, g, b] = hslToRgb(baseH, baseS, Math.max(0.1, Math.min(0.9, baseL + n)));
+        set(x, y, r, g, b);
+      }
+  }
+
+  else if (type === 'stars') {
+    // Starfield on dark background
+    const seed = Math.floor(Math.random() * 10000);
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < stripWidth; x++) {
+        // Dark sky with subtle nebula color
+        const blend = x / stripWidth;
+        const n1 = fbm(x + seed, y + seed, 3, 60);
+        const n2 = fbm(x + stripWidth + seed, y + seed, 3, 60);
+        const nebula = n1 * (1 - blend) + n2 * blend;
+        const [br, bg, bb] = hslToRgb(240 + nebula * 60, 0.4, 0.04 + nebula * 0.06);
+        set(x, y, br, bg, bb);
+      }
+    // Scatter stars (wrapping horizontally)
+    const numStars = Math.round(stripWidth * height / 60);
+    for (let i = 0; i < numStars; i++) {
+      const sx = Math.floor(Math.random() * stripWidth);
+      const sy = Math.floor(Math.random() * height);
+      const brightness = 0.5 + Math.random() * 0.5;
+      const starH = Math.random() < 0.3 ? 30 + Math.random() * 30 : 200 + Math.random() * 60;
+      const size = Math.random() < 0.85 ? 1 : (Math.random() < 0.7 ? 2 : 3);
+      for (let dy = -size; dy <= size; dy++)
+        for (let dx = -size; dx <= size; dx++) {
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > size) continue;
+          const fade = 1 - dist / (size + 0.5);
+          const px = ((sx + dx) % stripWidth + stripWidth) % stripWidth;
+          const py = sy + dy;
+          if (py >= 0 && py < height) {
+            const [sr, sg, sb] = hslToRgb(starH, 0.3, brightness * fade);
+            set(px, py, sr, sg, sb);
+          }
+        }
+    }
+  }
+
+  return buf;
+}
+
+function createPatternFn(type, stripWidth, height, patternImg) {
   if (type === 'custom' && patternImg) {
     const c = document.createElement('canvas');
     c.width = stripWidth;
@@ -883,44 +1095,13 @@ function createPatternFn(type, stripWidth, height, patternImg) {
     };
   }
 
-  if (type === 'randomColor') {
-    for (let i = 0; i < stripWidth * height; i++) {
-      const h = Math.random() * 360;
-      const s = 0.7 + Math.random() * 0.3;
-      const l = 0.35 + Math.random() * 0.3;
-      const [r, g, b] = hslToRgb(h, s, l);
-      buf[i * 4] = r;
-      buf[i * 4 + 1] = g;
-      buf[i * 4 + 2] = b;
-      buf[i * 4 + 3] = 255;
-    }
-  } else {
-    for (let i = 0; i < stripWidth * height; i++) {
-      const v = Math.random() < 0.5 ? 0 : 255;
-      buf[i * 4] = buf[i * 4 + 1] = buf[i * 4 + 2] = v;
-      buf[i * 4 + 3] = 255;
-    }
-  }
+  const buf = renderPatternToBuffer(type, stripWidth, height);
 
   return (x, y) => {
     const px = ((x % stripWidth) + stripWidth) % stripWidth;
     const idx = (y * stripWidth + px) * 4;
     return [buf[idx], buf[idx + 1], buf[idx + 2], 255];
   };
-}
-
-function hslToRgb(h, s, l) {
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
-  const m = l - c / 2;
-  let r, g, b;
-  if (h < 60) { r = c; g = x; b = 0; }
-  else if (h < 120) { r = x; g = c; b = 0; }
-  else if (h < 180) { r = 0; g = c; b = x; }
-  else if (h < 240) { r = 0; g = x; b = c; }
-  else if (h < 300) { r = x; g = 0; b = c; }
-  else { r = c; g = 0; b = x; }
-  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
 }
 
 async function generateStereogram() {
